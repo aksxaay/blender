@@ -1437,6 +1437,10 @@ typedef struct NodeGeometryRaycast {
   char _pad[1];
 } NodeGeometryRaycast;
 
+typedef struct NodeGeometryCurveFill {
+  uint8_t mode;
+} NodeGeometryCurveFill;
+
 /* script node mode */
 #define NODE_SCRIPT_INTERNAL 0
 #define NODE_SCRIPT_EXTERNAL 1
@@ -1836,9 +1840,9 @@ typedef enum NodeShaderOutputTarget {
 /* Geometry Nodes */
 
 typedef enum GeometryNodeAttributeProximityTargetType {
-  GEO_NODE_ATTRIBUTE_PROXIMITY_TARGET_GEOMETRY_ELEMENT_POINTS = 0,
-  GEO_NODE_ATTRIBUTE_PROXIMITY_TARGET_GEOMETRY_ELEMENT_EDGES = 1,
-  GEO_NODE_ATTRIBUTE_PROXIMITY_TARGET_GEOMETRY_ELEMENT_FACES = 2,
+  GEO_NODE_PROXIMITY_TARGET_POINTS = 0,
+  GEO_NODE_PROXIMITY_TARGET_EDGES = 1,
+  GEO_NODE_PROXIMITY_TARGET_FACES = 2,
 } GeometryNodeAttributeProximityTargetType;
 
 typedef enum GeometryNodeBooleanOperation {
@@ -1885,6 +1889,7 @@ typedef enum GeometryNodeTriangulateQuads {
 typedef enum GeometryNodePointInstanceType {
   GEO_NODE_POINT_INSTANCE_TYPE_OBJECT = 0,
   GEO_NODE_POINT_INSTANCE_TYPE_COLLECTION = 1,
+  GEO_NODE_POINT_INSTANCE_TYPE_GEOMETRY = 2,
 } GeometryNodePointInstanceType;
 
 typedef enum GeometryNodePointInstanceFlag {
@@ -2007,6 +2012,11 @@ typedef enum GeometryNodeRaycastMapMode {
   GEO_NODE_RAYCAST_INTERPOLATED = 0,
   GEO_NODE_RAYCAST_NEAREST = 1,
 } GeometryNodeRaycastMapMode;
+
+typedef enum GeometryNodeCurveFillMode {
+  GEO_NODE_CURVE_FILL_MODE_TRIANGULATED = 0,
+  GEO_NODE_CURVE_FILL_MODE_NGONS = 1,
+} GeometryNodeCurveFillMode;
 
 #ifdef __cplusplus
 }
