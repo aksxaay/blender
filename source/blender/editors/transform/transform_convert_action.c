@@ -51,7 +51,10 @@
 
 /* helper struct for gp-frame transforms */
 typedef struct tGPFtransdata {
-  float val;  /* where transdata writes transform */
+  union {
+    float val;    /* where transdata writes transform */
+    float loc[3]; /* #td->val and #td->loc share the same pointer. */
+  };
   int *sdata; /* pointer to gpf->framenum */
 } tGPFtransdata;
 
@@ -158,8 +161,9 @@ static void TimeToTransData(
   /* Setup #TransData. */
   td->loc = time; /* Usually #td2d->loc is used here. But this is for when the original location is
                      not float[3]. */
+  copy_v3_v3(td->iloc, td->loc);
   td->val = time;
-  td->ival = td->iloc[0] = *(time);
+  td->ival = *(time);
   td->center[0] = td->ival;
   td->center[1] = ypos;
 
@@ -244,8 +248,8 @@ static int GPLayerToTransData(TransData *td,
         tfd->val = (float)gpf->framenum;
         tfd->sdata = &gpf->framenum;
 
-        td->val = td->loc = &tfd->val; /* XXX: It's not a 3d array. */
-        td->ival = td->iloc[0] = (float)gpf->framenum;
+        td->val = td->loc = &tfd->val;
+        td->ival = td->iloc[0] = tfd->val;
 
         td->center[0] = td->ival;
         td->center[1] = ypos;
@@ -278,15 +282,14 @@ static int MaskLayerToTransData(TransData *td,
        masklay_shape = masklay_shape->next) {
     if (is_prop_edit || (masklay_shape->flag & MASK_SHAPE_SELECT)) {
       if (FrameOnMouseSide(side, (float)masklay_shape->frame, cfra)) {
-        /* memory is calloc'ed, so that should zero everything nicely for us */
-        td->val = &tfd->val;
-        td->ival = (float)masklay_shape->frame;
+        tfd->val = (float)masklay_shape->frame;
+        tfd->sdata = &masklay_shape->frame;
+
+        td->val = td->loc = &tfd->val;
+        td->ival = td->iloc[0] = tfd->val;
 
         td->center[0] = td->ival;
         td->center[1] = ypos;
-
-        tfd->val = (float)masklay_shape->frame;
-        tfd->sdata = &masklay_shape->frame;
 
         /* advance td now */
         td++;
@@ -615,7 +618,11 @@ void recalcData_actedit(TransInfo *t)
     if ((autosnap != SACTSNAP_OFF) && (t->state != TRANS_CANCEL) && !(td->flag & TD_NOTIMESNAP)) {
       transform_snap_anim_flush_data(t, td, autosnap, td->loc);
     }
-    transform_convert_flush_handle2D(td, td2d, 1.0f);
+
+    /* Constrain Y. */
+    td->loc[1] = td->iloc[1];
+
+    transform_convert_flush_handle2D(td, td2d, 0.0f);
   }
 
   if (ac.datatype != ANIMCONT_MASK) {

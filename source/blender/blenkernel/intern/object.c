@@ -324,9 +324,17 @@ static void object_free_data(ID *id)
 
 static void object_make_local(Main *bmain, ID *id, const int flags)
 {
+  if (!ID_IS_LINKED(id)) {
+    return;
+  }
+
   Object *ob = (Object *)id;
   const bool lib_local = (flags & LIB_ID_MAKELOCAL_FULL_LIBRARY) != 0;
   const bool clear_proxy = (flags & LIB_ID_MAKELOCAL_OBJECT_NO_PROXY_CLEARING) == 0;
+  const bool force_local = (flags & LIB_ID_MAKELOCAL_FORCE_LOCAL) != 0;
+  const bool force_copy = (flags & LIB_ID_MAKELOCAL_FORCE_COPY) != 0;
+  BLI_assert(force_copy == false || force_copy != force_local);
+
   bool is_local = false, is_lib = false;
 
   /* - only lib users: do nothing (unless force_local is set)
@@ -336,14 +344,12 @@ static void object_make_local(Main *bmain, ID *id, const int flags)
    * we always want to localize, and we skip remapping (done later).
    */
 
-  if (!ID_IS_LINKED(ob)) {
-    return;
+  if (!force_local && !force_copy) {
+    BKE_library_ID_test_usages(bmain, ob, &is_local, &is_lib);
   }
 
-  BKE_library_ID_test_usages(bmain, ob, &is_local, &is_lib);
-
-  if (lib_local || is_local) {
-    if (!is_lib) {
+  if (lib_local || is_local || force_copy || force_local) {
+    if (!is_lib || force_local) {
       BKE_lib_id_clear_library_data(bmain, &ob->id);
       BKE_lib_id_expand_local(bmain, &ob->id);
       if (clear_proxy) {
@@ -864,7 +870,7 @@ static void object_blend_read_lib(BlendLibReader *reader, ID *id)
   BLO_read_id_address(reader, ob->id.lib, &ob->proxy);
   if (ob->proxy) {
     /* paranoia check, actually a proxy_from pointer should never be written... */
-    if (ob->proxy->id.lib == NULL) {
+    if (!ID_IS_LINKED(ob->proxy)) {
       ob->proxy->proxy_from = NULL;
       ob->proxy = NULL;
 
@@ -1979,8 +1985,7 @@ int BKE_object_visibility(const Object *ob, const int dag_eval_mode)
     visibility |= OB_VISIBLE_INSTANCES;
   }
 
-  if (ob->runtime.geometry_set_eval != NULL &&
-      BKE_geometry_set_has_instances(ob->runtime.geometry_set_eval)) {
+  if (BKE_object_has_geometry_set_instances(ob)) {
     visibility |= OB_VISIBLE_INSTANCES;
   }
 
@@ -2614,17 +2619,21 @@ void BKE_object_transform_copy(Object *ob_tar, const Object *ob_src)
 Object *BKE_object_duplicate(Main *bmain,
                              Object *ob,
                              eDupli_ID_Flags dupflag,
-                             const eLibIDDuplicateFlags duplicate_options)
+                             eLibIDDuplicateFlags duplicate_options)
 {
   const bool is_subprocess = (duplicate_options & LIB_ID_DUPLICATE_IS_SUBPROCESS) != 0;
+  const bool is_root_id = (duplicate_options & LIB_ID_DUPLICATE_IS_ROOT_ID) != 0;
 
   if (!is_subprocess) {
     BKE_main_id_newptr_and_tag_clear(bmain);
+  }
+  if (is_root_id) {
     /* In case root duplicated ID is linked, assume we want to get a local copy of it and duplicate
      * all expected linked data. */
     if (ID_IS_LINKED(ob)) {
       dupflag |= USER_DUP_LINKED_ID;
     }
+    duplicate_options &= ~LIB_ID_DUPLICATE_IS_ROOT_ID;
   }
 
   Material ***matarar;
@@ -3303,8 +3312,8 @@ static void ob_parbone(Object *ob, Object *par, float r_mat[4][4])
   /* Make sure the bone is still valid */
   bPoseChannel *pchan = BKE_pose_channel_find_name(par->pose, ob->parsubstr);
   if (!pchan || !pchan->bone) {
-    CLOG_ERROR(
-        &LOG, "Object %s with Bone parent: bone %s doesn't exist", ob->id.name + 2, ob->parsubstr);
+    CLOG_WARN(
+        &LOG, "Parent Bone: '%s' for Object: '%s' doesn't exist", ob->parsubstr, ob->id.name + 2);
     unit_m4(r_mat);
     return;
   }
@@ -5732,4 +5741,22 @@ void BKE_object_modifiers_lib_link_common(void *userData,
   if (*idpoin != NULL && (cb_flag & IDWALK_CB_USER) != 0) {
     id_us_plus_no_lib(*idpoin);
   }
+}
+
+void BKE_object_replace_data_on_shallow_copy(Object *ob, ID *new_data)
+{
+  ob->type = BKE_object_obdata_to_type(new_data);
+  ob->data = new_data;
+  ob->runtime.geometry_set_eval = NULL;
+  ob->runtime.data_eval = NULL;
+  if (ob->runtime.bb != NULL) {
+    ob->runtime.bb->flag |= BOUNDBOX_DIRTY;
+  }
+  ob->id.py_instance = NULL;
+}
+
+bool BKE_object_supports_material_slots(struct Object *ob)
+{
+  return ELEM(
+      ob->type, OB_MESH, OB_CURVE, OB_SURF, OB_FONT, OB_MBALL, OB_HAIR, OB_POINTCLOUD, OB_VOLUME);
 }
